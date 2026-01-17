@@ -4,7 +4,7 @@ import { RefreshCw, Loader2, User } from 'lucide-react';
 import { useTikTok } from '../../contexts';
 
 export function TikTokSearchBar() {
-  const { username, profile, isLoading, isSyncing, syncVideos } = useTikTok();
+  const { username, profile, isLoading, isSyncing, error, syncVideos } = useTikTok();
 
   return (
     <div className="bg-dark-800 rounded-lg p-4 mb-4">
@@ -47,6 +47,13 @@ export function TikTokSearchBar() {
           )}
         </button>
       </div>
+
+      {/* Erro */}
+      {error && (
+        <p className="text-red-500 text-sm mt-3 text-center sm:text-left">
+          Erro: {error}
+        </p>
+      )}
 
       {/* Info */}
       <p className="text-dark-400 text-xs mt-3 text-center sm:text-left">

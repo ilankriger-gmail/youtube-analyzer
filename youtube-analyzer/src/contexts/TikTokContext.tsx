@@ -212,9 +212,8 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
           videoCount: result.videoCount,
         });
       } catch (err) {
-        // Erro silencioso - usuario pode clicar em Atualizar
         console.error('[TikTok] Erro ao carregar do banco:', err);
-        setError(null); // Nao mostra erro, apenas lista vazia
+        setError(err instanceof Error ? err.message : 'Erro ao carregar videos');
       } finally {
         setIsLoading(false);
       }
@@ -230,7 +229,7 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
     setError(null);
 
     try {
-      const result = await syncTikTokVideos(500);
+      const result = await syncTikTokVideos(2000);
 
       if (!result.success) {
         throw new Error(result.error || 'Falha ao sincronizar');
