@@ -6,6 +6,8 @@ import instaloader
 import json
 import sys
 import os
+import base64
+import tempfile
 from datetime import datetime
 
 def fetch_profile(username, media_type='all', limit=100):
@@ -34,13 +36,31 @@ def fetch_profile(username, media_type='all', limit=100):
     # Tentar carregar sessao salva (permite acesso a historico completo)
     session_file = os.path.expanduser(f'~/.config/instaloader/session-{username}')
     logged_in = False
+
+    # Primeiro tenta arquivo local
     try:
         if os.path.exists(session_file):
             L.load_session_from_file(username, session_file)
             logged_in = True
-            print(f"[INFO] Sessao carregada: {session_file}", file=sys.stderr)
+            print(f"[INFO] Sessao carregada (arquivo): {session_file}", file=sys.stderr)
     except Exception as e:
-        print(f"[WARN] Falha ao carregar sessao: {e}", file=sys.stderr)
+        print(f"[WARN] Falha ao carregar sessao local: {e}", file=sys.stderr)
+
+    # Se nao tem arquivo local, tenta variavel de ambiente (para Railway)
+    if not logged_in:
+        session_b64 = os.environ.get('INSTAGRAM_SESSION')
+        if session_b64:
+            try:
+                # Decodifica base64 e salva em arquivo temporario
+                session_data = base64.b64decode(session_b64)
+                temp_session = os.path.join(tempfile.gettempdir(), f'session-{username}')
+                with open(temp_session, 'wb') as f:
+                    f.write(session_data)
+                L.load_session_from_file(username, temp_session)
+                logged_in = True
+                print(f"[INFO] Sessao carregada (env var)", file=sys.stderr)
+            except Exception as e:
+                print(f"[WARN] Falha ao carregar sessao do ambiente: {e}", file=sys.stderr)
 
     try:
         profile = instaloader.Profile.from_username(L.context, username)
