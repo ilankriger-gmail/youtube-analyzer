@@ -90,7 +90,7 @@ router.post('/refresh', async (req, res) => {
   try {
     console.log(`[Refresh] Atualizando videos de @${FIXED_USERNAME}...`);
 
-    const result = await runPythonScript([FIXED_USERNAME, 'all', '200']);
+    const result = await runPythonScript([FIXED_USERNAME, 'all', '50']);
 
     if (result.error) {
       console.log(`[Refresh] Erro: ${result.error}`);
