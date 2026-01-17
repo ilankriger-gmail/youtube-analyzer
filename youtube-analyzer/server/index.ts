@@ -1,9 +1,11 @@
 // ========== SERVIDOR EXPRESS - DOWNLOAD API ==========
 
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import downloadRoutes from './routes/download.js';
 import tiktokRoutes from './routes/tiktok.js';
+import youtubeRoutes from './routes/youtube.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,6 +54,9 @@ app.get('/health', (_req, res) => {
 
 // Rotas de download (YouTube)
 app.use('/api', downloadRoutes);
+
+// Rotas proxy YouTube API
+app.use('/api/youtube', youtubeRoutes);
 
 // Rotas do TikTok
 app.use('/api/tiktok', tiktokRoutes);

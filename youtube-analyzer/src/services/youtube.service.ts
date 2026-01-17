@@ -17,18 +17,21 @@ import {
 import { parseDuration, formatDuration, isShortDuration } from '../utils/duration.utils';
 
 /**
- * Chave da API do YouTube (via variavel de ambiente)
+ * URL do backend que faz proxy para a API do YouTube
+ * Isso evita problemas de CORS e referrer restrictions
+ */
+const BACKEND_URL = import.meta.env.VITE_DOWNLOAD_API_URL || 'http://localhost:3001';
+
+/**
+ * API Key do YouTube (usada para verificar se está configurada)
  */
 const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
 /**
- * Instancia do axios configurada para a API do YouTube
+ * Instancia do axios configurada para usar o backend como proxy
  */
 const youtubeApi = axios.create({
-  baseURL: YOUTUBE_API_BASE_URL,
-  params: {
-    key: API_KEY,
-  },
+  baseURL: `${BACKEND_URL}/api/youtube`,
 });
 
 // ========== CANAL ==========
