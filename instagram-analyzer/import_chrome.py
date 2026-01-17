@@ -76,27 +76,14 @@ def create_instaloader_session(cookies):
     """Cria arquivo de sessão do Instaloader a partir dos cookies"""
     print("\nCriando sessão do Instaloader...")
 
-    import instaloader
-
-    L = instaloader.Instaloader()
-
-    # Criar session do requests com os cookies
-    session = requests.Session()
-    for name, value in cookies.items():
-        session.cookies.set(name, value, domain='.instagram.com')
-
-    # Copiar cookies para o contexto do Instaloader
-    L.context._session.cookies.update(session.cookies)
-
-    # Tentar salvar
     try:
         session_dir = os.path.expanduser('~/.config/instaloader')
         os.makedirs(session_dir, exist_ok=True)
         session_file = os.path.join(session_dir, f'session-{USERNAME}')
 
-        # Salvar usando pickle (formato do instaloader)
+        # Salvar como DICT (formato que Instaloader espera)
         with open(session_file, 'wb') as f:
-            pickle.dump(L.context._session.cookies, f)
+            pickle.dump(cookies, f)
 
         print(f"✓ Sessão salva em: {session_file}")
         return True
