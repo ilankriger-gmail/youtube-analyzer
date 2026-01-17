@@ -1,0 +1,11 @@
+# Configuracao Nixpacks para Railway
+# Instala yt-dlp e ffmpeg para download de videos
+
+[phases.setup]
+nixPkgs = ["yt-dlp", "ffmpeg"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "npm start"
