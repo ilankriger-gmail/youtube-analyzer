@@ -1,7 +1,7 @@
 // ========== COMPONENTE: BARRA DE FILTROS TIKTOK ==========
 
 import { useState } from 'react';
-import { Filter, RotateCcw } from 'lucide-react';
+import { Filter, RotateCcw, Search } from 'lucide-react';
 import { useTikTok } from '../../contexts';
 import { parseDuration } from '../../services/tiktok.service';
 
@@ -40,6 +40,35 @@ export function TikTokFilterBar() {
             ? `${videos.length} videos`
             : `${filteredVideos.length} de ${videos.length} videos`}
         </span>
+      </div>
+
+      {/* Busca por texto e Periodo */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        {/* Busca por texto */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-dark-400 w-4 h-4" />
+          <input
+            type="text"
+            value={filters.searchText}
+            onChange={(e) => setFilters({ searchText: e.target.value })}
+            placeholder="Buscar por titulo..."
+            className="w-full bg-dark-700 border border-dark-600 rounded px-3 py-2 pl-10 text-white text-sm focus:outline-none focus:border-[#fe2c55]"
+          />
+        </div>
+
+        {/* Periodo */}
+        <select
+          value={filters.dateRange}
+          onChange={(e) => setFilters({ dateRange: e.target.value as typeof filters.dateRange })}
+          className="bg-dark-700 border border-dark-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-[#fe2c55]"
+        >
+          <option value="all">Todo periodo</option>
+          <option value="7">Ultimos 7 dias</option>
+          <option value="30">Ultimos 30 dias</option>
+          <option value="60">Ultimos 60 dias</option>
+          <option value="90">Ultimos 90 dias</option>
+          <option value="365">Ultimo ano</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

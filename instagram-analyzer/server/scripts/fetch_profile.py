@@ -31,12 +31,16 @@ def fetch_profile(username, media_type='all', limit=100):
         quiet=True
     )
 
-    # Tentar carregar sessao salva (para perfis privados)
-    session_file = os.path.expanduser(f'~/.instaloader-session-{username}')
+    # Tentar carregar sessao salva (permite acesso a historico completo)
+    session_file = os.path.expanduser(f'~/.config/instaloader/session-{username}')
+    logged_in = False
     try:
-        L.load_session_from_file(username, session_file)
-    except:
-        pass  # Continua sem sessao
+        if os.path.exists(session_file):
+            L.load_session_from_file(username, session_file)
+            logged_in = True
+            print(f"[INFO] Sessao carregada: {session_file}", file=sys.stderr)
+    except Exception as e:
+        print(f"[WARN] Falha ao carregar sessao: {e}", file=sys.stderr)
 
     try:
         profile = instaloader.Profile.from_username(L.context, username)
@@ -109,7 +113,8 @@ def fetch_profile(username, media_type='all', limit=100):
         'bio': profile.biography,
         'is_private': profile.is_private,
         'videos': videos,
-        'fetched_at': datetime.utcnow().isoformat()
+        'fetched_at': datetime.utcnow().isoformat(),
+        'logged_in': logged_in
     }
 
 

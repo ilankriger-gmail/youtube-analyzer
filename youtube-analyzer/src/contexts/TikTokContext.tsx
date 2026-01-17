@@ -21,6 +21,7 @@ import {
 // ========== TIPOS ==========
 
 type SortOption = 'views-desc' | 'views-asc' | 'date-desc' | 'date-asc' | 'duration-desc' | 'duration-asc';
+type DateRange = '7' | '30' | '60' | '90' | '365' | 'all';
 
 interface TikTokFilters {
   minViews: number | null;
@@ -28,6 +29,8 @@ interface TikTokFilters {
   minDuration: number | null;
   maxDuration: number | null;
   sortBy: SortOption;
+  dateRange: DateRange;
+  searchText: string;
 }
 
 interface DownloadQueueItem {
@@ -90,6 +93,8 @@ const DEFAULT_FILTERS: TikTokFilters = {
   minDuration: null,
   maxDuration: null,
   sortBy: 'views-desc',
+  dateRange: 'all',
+  searchText: '',
 };
 
 // ========== PROVIDER ==========
@@ -133,6 +138,28 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
   // Videos filtrados e ordenados
   const filteredVideos = useMemo(() => {
     let result = [...videos];
+
+    // Filtro de busca por texto
+    if (filters.searchText.trim()) {
+      const search = filters.searchText.toLowerCase().trim();
+      result = result.filter(v =>
+        v.title.toLowerCase().includes(search) ||
+        v.channel.toLowerCase().includes(search)
+      );
+    }
+
+    // Filtro de periodo (data)
+    if (filters.dateRange !== 'all') {
+      const days = parseInt(filters.dateRange);
+      const now = new Date();
+      const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const cutoffStr = cutoffDate.toISOString().slice(0, 10).replace(/-/g, '');
+
+      result = result.filter(v => {
+        if (!v.uploadDate) return false;
+        return v.uploadDate >= cutoffStr;
+      });
+    }
 
     // Filtro de views
     if (filters.minViews !== null) {
@@ -263,11 +290,11 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
   }, []);
 
   const selectTop5 = useCallback(() => {
-    setSelectedIds(new Set(top5Ids));
+    setSelectedIds(prev => new Set([...prev, ...top5Ids]));
   }, [top5Ids]);
 
   const selectBottom5 = useCallback(() => {
-    setSelectedIds(new Set(bottom5Ids));
+    setSelectedIds(prev => new Set([...prev, ...bottom5Ids]));
   }, [bottom5Ids]);
 
   const selectAll = useCallback(() => {
