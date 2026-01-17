@@ -52,15 +52,11 @@ function getDownloadUrl(videoUrl, quality = 'best', filename = '') {
  * Gera URL de download direto (proxy CDN)
  */
 function getDirectDownloadUrl(videoUrl, filename = '') {
-  const params = new URLSearchParams({
-    url: videoUrl,
-  });
+  // Encode URL explicitly to handle special characters
+  const encodedUrl = encodeURIComponent(videoUrl);
+  const encodedFilename = encodeURIComponent(filename);
 
-  if (filename) {
-    params.append('filename', filename);
-  }
-
-  return `${API_BASE}/download-direct?${params.toString()}`;
+  return `${API_BASE}/download-direct?url=${encodedUrl}&filename=${encodedFilename}`;
 }
 
 /**
