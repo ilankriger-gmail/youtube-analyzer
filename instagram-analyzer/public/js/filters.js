@@ -3,6 +3,7 @@
 const Filters = {
   // Estado dos filtros
   current: {
+    search: '',
     period: 'all',
     viewsMin: 0,
     viewsMax: Infinity,
@@ -16,6 +17,16 @@ const Filters = {
    */
   apply(videos) {
     let filtered = videos.filter(video => {
+      // Filtro por texto (busca no caption)
+      if (this.current.search) {
+        const searchLower = this.current.search.toLowerCase();
+        const caption = (video.caption || '').toLowerCase();
+        const captionFull = (video.caption_full || '').toLowerCase();
+        if (!caption.includes(searchLower) && !captionFull.includes(searchLower)) {
+          return false;
+        }
+      }
+
       // Filtro de periodo
       if (this.current.period !== 'all') {
         const days = parseInt(this.current.period);
@@ -63,6 +74,7 @@ const Filters = {
    * Atualiza filtros a partir dos inputs
    */
   updateFromInputs() {
+    const search = document.getElementById('filter-search').value;
     const period = document.getElementById('filter-period').value;
     const viewsMin = document.getElementById('filter-views-min').value;
     const viewsMax = document.getElementById('filter-views-max').value;
@@ -71,6 +83,7 @@ const Filters = {
     const sort = document.getElementById('filter-sort').value;
 
     this.current = {
+      search,
       period,
       viewsMin: viewsMin ? parseInt(viewsMin) : 0,
       viewsMax: viewsMax ? parseInt(viewsMax) : Infinity,
@@ -85,6 +98,7 @@ const Filters = {
    */
   reset() {
     this.current = {
+      search: '',
       period: 'all',
       viewsMin: 0,
       viewsMax: Infinity,
@@ -94,6 +108,7 @@ const Filters = {
     };
 
     // Limpa inputs
+    document.getElementById('filter-search').value = '';
     document.getElementById('filter-period').value = 'all';
     document.getElementById('filter-views-min').value = '';
     document.getElementById('filter-views-max').value = '';

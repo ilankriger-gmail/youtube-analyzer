@@ -32,6 +32,13 @@ const App = {
       this.applyFilters();
     });
 
+    // Busca por texto - aplica com debounce
+    let searchTimeout;
+    document.getElementById('filter-search').addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => this.applyFilters(), 300);
+    });
+
     // Selecao
     document.getElementById('btn-top5').addEventListener('click', () => {
       Selection.selectTop(this.filteredVideos, 5);
