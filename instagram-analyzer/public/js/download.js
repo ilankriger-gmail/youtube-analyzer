@@ -102,19 +102,62 @@ const Download = {
   },
 
   /**
-   * Gera CSV com dados dos videos
+   * Gera CSV com todos os dados dos videos
    */
   generateCSV(videos) {
-    const headers = ['Nome', 'Views', 'Likes', 'Comentarios', 'Duracao', 'Tipo', 'URL'];
+    const headers = [
+      'Shortcode',
+      'Titulo',
+      'Descricao Completa',
+      'Views',
+      'Likes',
+      'Comentarios',
+      'Duracao (seg)',
+      'Duracao (formatada)',
+      'Tipo',
+      'Data Publicacao',
+      'URL Post',
+      'URL Video',
+      'URL Thumbnail'
+    ];
+
+    const formatDurationCSV = (seconds) => {
+      if (!seconds) return '0:00';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const formatDateCSV = (timestamp) => {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const escapeCSV = (text) => {
+      if (!text) return '';
+      // Escapa aspas duplas e envolve em aspas se tiver vírgula, quebra de linha ou aspas
+      const escaped = String(text).replace(/"/g, '""');
+      if (escaped.includes(',') || escaped.includes('\n') || escaped.includes('"')) {
+        return `"${escaped}"`;
+      }
+      return escaped;
+    };
 
     const rows = videos.map(video => [
-      `"${(video.caption || 'Sem titulo').replace(/"/g, '""')}"`,
-      video.views,
-      video.likes,
-      video.comments,
-      video.duration,
-      video.type,
-      video.url,
+      video.shortcode || '',
+      escapeCSV(video.caption || 'Sem titulo'),
+      escapeCSV(video.caption_full || video.caption || ''),
+      video.views || 0,
+      video.likes || 0,
+      video.comments || 0,
+      video.duration || 0,
+      formatDurationCSV(video.duration),
+      video.type || 'video',
+      formatDateCSV(video.timestamp),
+      video.url || '',
+      video.video_url || '',
+      video.thumbnail || ''
     ]);
 
     const csvContent = [
@@ -127,7 +170,7 @@ const Download = {
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
 
     const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `instagram_download_${timestamp}.csv`;
+    const filename = `instagram_nextleveldj1_${timestamp}.csv`;
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -139,6 +182,8 @@ const Download = {
     document.body.removeChild(link);
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    console.log(`CSV gerado com ${videos.length} videos`);
   },
 
   /**
