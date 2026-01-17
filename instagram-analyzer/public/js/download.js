@@ -56,7 +56,14 @@ const Download = {
     this.renderQueue();
 
     try {
-      const downloadUrl = getDownloadUrl(item.video.url, quality, item.filename);
+      // Usa download direto se tiver video_url (mais rapido e confiavel)
+      // Caso contrario usa yt-dlp
+      let downloadUrl;
+      if (item.video.video_url) {
+        downloadUrl = getDirectDownloadUrl(item.video.video_url, item.filename);
+      } else {
+        downloadUrl = getDownloadUrl(item.video.url, quality, item.filename);
+      }
 
       // Cria link de download
       const link = document.createElement('a');

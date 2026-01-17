@@ -33,7 +33,7 @@ async function refreshVideos() {
 }
 
 /**
- * Gera URL de download
+ * Gera URL de download (usa yt-dlp)
  */
 function getDownloadUrl(videoUrl, quality = 'best', filename = '') {
   const params = new URLSearchParams({
@@ -46,6 +46,21 @@ function getDownloadUrl(videoUrl, quality = 'best', filename = '') {
   }
 
   return `${API_BASE}/download?${params.toString()}`;
+}
+
+/**
+ * Gera URL de download direto (proxy CDN)
+ */
+function getDirectDownloadUrl(videoUrl, filename = '') {
+  const params = new URLSearchParams({
+    url: videoUrl,
+  });
+
+  if (filename) {
+    params.append('filename', filename);
+  }
+
+  return `${API_BASE}/download-direct?${params.toString()}`;
 }
 
 /**

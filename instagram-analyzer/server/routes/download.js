@@ -200,4 +200,63 @@ router.get('/download/info', async (req, res) => {
   });
 });
 
+/**
+ * GET /api/download-direct
+ * Baixa video diretamente da URL CDN (proxy)
+ */
+router.get('/download-direct', async (req, res) => {
+  const { url, filename } = req.query;
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL e obrigatorio' });
+  }
+
+  console.log(`[Download Direct] Iniciando: ${filename || 'video'}`);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Referer': 'https://www.instagram.com/',
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`[Download Direct] Erro: ${response.status}`);
+      return res.status(response.status).json({ error: 'Falha ao baixar video' });
+    }
+
+    const contentType = response.headers.get('content-type') || 'video/mp4';
+    const contentLength = response.headers.get('content-length');
+    const finalFilename = filename || `instagram_${Date.now()}.mp4`;
+
+    res.setHeader('Content-Type', contentType);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalFilename)}"`);
+
+    // Stream response body to client
+    const reader = response.body.getReader();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+      }
+      res.end();
+    };
+
+    await pump();
+    console.log(`[Download Direct] Concluido: ${finalFilename}`);
+
+  } catch (error) {
+    console.error('[Download Direct] Erro:', error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro ao baixar video', details: error.message });
+    }
+  }
+});
+
 module.exports = router;
