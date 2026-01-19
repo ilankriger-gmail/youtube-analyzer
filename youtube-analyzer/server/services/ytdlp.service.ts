@@ -5,11 +5,40 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { unlink, stat } from 'fs/promises';
-import { createReadStream } from 'fs';
+import { unlink, stat, writeFile } from 'fs/promises';
+import { createReadStream, existsSync } from 'fs';
 import type { ReadStream } from 'fs';
 
 const execAsync = promisify(exec);
+
+// ========== COOKIES ==========
+
+const COOKIES_FILE_PATH = join(tmpdir(), 'youtube_cookies.txt');
+
+/**
+ * Salva cookies do YouTube a partir da variável de ambiente
+ */
+async function ensureCookiesFile(): Promise<string | null> {
+  const cookiesContent = process.env.YOUTUBE_COOKIES;
+
+  if (!cookiesContent) {
+    return null;
+  }
+
+  try {
+    // Decodifica base64 se necessário
+    let cookies = cookiesContent;
+    if (!cookiesContent.startsWith('#')) {
+      cookies = Buffer.from(cookiesContent, 'base64').toString('utf-8');
+    }
+
+    await writeFile(COOKIES_FILE_PATH, cookies, 'utf-8');
+    return COOKIES_FILE_PATH;
+  } catch (error) {
+    console.error('Erro ao salvar cookies:', error);
+    return null;
+  }
+}
 
 // ========== TIPOS ==========
 
@@ -76,14 +105,22 @@ export async function checkFfmpeg(): Promise<ToolStatus> {
 // ========== OBTER INFO DO VIDEO ==========
 
 export async function getVideoInfo(url: string): Promise<VideoInfo> {
+  const cookiesFile = await ensureCookiesFile();
+
   return new Promise((resolve, reject) => {
     const args = [
       '--dump-json',
       '--no-download',
       '--no-warnings',
       '--no-playlist',
-      url,
     ];
+
+    // Adicionar cookies se disponíveis
+    if (cookiesFile) {
+      args.push('--cookies', cookiesFile);
+    }
+
+    args.push(url);
 
     const ytdlp = spawn('yt-dlp', args);
     let stdout = '';
@@ -171,6 +208,9 @@ export async function downloadVideoToFile(
   const tempFileName = `ytdl_${randomUUID()}.mp4`;
   const tempFilePath = join(tmpdir(), tempFileName);
 
+  // Verificar cookies
+  const cookiesFile = await ensureCookiesFile();
+
   const args = [
     '-f', format,
     '--no-warnings',
@@ -178,8 +218,15 @@ export async function downloadVideoToFile(
     '--merge-output-format', 'mp4',
     '--newline', // Para progresso linha por linha
     '-o', tempFilePath,
-    url,
   ];
+
+  // Adicionar cookies se disponíveis
+  if (cookiesFile) {
+    args.push('--cookies', cookiesFile);
+    console.log('[Download] Usando cookies do YouTube');
+  }
+
+  args.push(url);
 
   return new Promise((resolve, reject) => {
     const ytdlp = spawn('yt-dlp', args);
