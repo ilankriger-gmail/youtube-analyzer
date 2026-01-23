@@ -3,7 +3,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts';
 import { LoginPage } from './pages/LoginPage';
-import { HomePage, YouTubePage, InstagramPage, TikTokPage } from './pages';
+import { HomePage, YouTubePage, InstagramPage, TikTokPage, TikTokCreatorsPage } from './pages';
 
 /**
  * Rotas protegidas - requer autenticacao
@@ -21,6 +21,7 @@ function ProtectedRoutes() {
       <Route path="/youtube" element={<YouTubePage />} />
       <Route path="/instagram" element={<InstagramPage />} />
       <Route path="/tiktok" element={<TikTokPage />} />
+      <Route path="/tiktok-creators" element={<TikTokCreatorsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
