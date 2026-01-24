@@ -321,23 +321,23 @@ export function generateTikTokCSV(videos: TikTokVideo[], username: string): void
     'ID'
   ];
 
-  // Rows
+  // Rows - escape all values once
   const rows = videos.map(video => [
     escapeCSVValue(video.title),
-    video.views,
-    formatViews(video.views),
-    video.duration,
-    formatDuration(video.duration),
-    formatTikTokDate(video.uploadDate),
+    escapeCSVValue(video.views),
+    escapeCSVValue(formatViews(video.views)),
+    escapeCSVValue(video.duration),
+    escapeCSVValue(formatDuration(video.duration)),
+    escapeCSVValue(formatTikTokDate(video.uploadDate)),
     escapeCSVValue(video.channel),
-    video.url,
-    video.id
+    escapeCSVValue(video.url),
+    escapeCSVValue(video.id)
   ]);
 
   // Monta CSV
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => escapeCSVValue(cell)).join(','))
+    ...rows.map(row => row.join(','))
   ].join('\n');
 
   // Adiciona BOM para UTF-8 (Excel abre corretamente)
