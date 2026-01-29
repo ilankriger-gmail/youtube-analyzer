@@ -156,8 +156,19 @@ export async function downloadWithProgress(
     throw new Error(`Erro no download: ${response.status}`);
   }
 
+  // Validate content type - reject HTML error pages
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error('Servidor retornou HTML em vez de vídeo (URL expirada ou rate limit)');
+  }
+
   const contentLength = response.headers.get('content-length');
   const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+  // Reject suspiciously small files (< 50KB is likely an error)
+  if (total > 0 && total < 50000) {
+    throw new Error(`Arquivo muito pequeno (${Math.round(total / 1024)}KB) - provavelmente erro do servidor`);
+  }
 
   if (!response.body) {
     throw new Error('Response body nao disponivel');
@@ -181,6 +192,11 @@ export async function downloadWithProgress(
       // Se nao temos content-length, simula progresso
       onProgress(Math.min(95, Math.round(received / 1000000))); // 1% por MB
     }
+  }
+
+  // Final size check
+  if (received < 50000) {
+    throw new Error(`Download incompleto (${Math.round(received / 1024)}KB) - tente novamente`);
   }
 
   // Cria blob e faz download

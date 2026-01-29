@@ -79,47 +79,61 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
   }, []);
 
   /**
-   * Processa download de um video
+   * Processa download de um video com retry
    */
   const processDownload = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
-    try {
-      // Atualiza status para downloading
-      updateQueueItem(item.videoId, {
-        status: 'downloading',
-        startedAt: new Date(),
-      });
+    const MAX_RETRIES = 2;
 
-      // Obtem URL de download via Cobalt
-      const response = await getDownloadUrl(item.videoId);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Atualiza status para downloading
+        updateQueueItem(item.videoId, {
+          status: 'downloading',
+          startedAt: new Date(),
+          progress: 0,
+          error: attempt > 0 ? `Tentativa ${attempt + 1}...` : undefined,
+        });
 
-      // Faz download com progresso
-      await downloadWithProgress(
-        response.url,
-        item.filename,
-        (progress) => {
-          updateQueueItem(item.videoId, { progress });
+        // Obtem URL de download via Cobalt (fresh URL each attempt)
+        const response = await getDownloadUrl(item.videoId);
+
+        // Faz download com progresso e validation
+        await downloadWithProgress(
+          response.url,
+          item.filename,
+          (progress) => {
+            updateQueueItem(item.videoId, { progress });
+          }
+        );
+
+        // Marca como completo
+        updateQueueItem(item.videoId, {
+          status: 'completed',
+          progress: 100,
+          completedAt: new Date(),
+          error: undefined,
+        });
+
+        return true;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        console.error(`Erro ao baixar ${item.video.title} (tentativa ${attempt + 1}):`, error);
+
+        if (attempt < MAX_RETRIES) {
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+          continue;
         }
-      );
 
-      // Marca como completo
-      updateQueueItem(item.videoId, {
-        status: 'completed',
-        progress: 100,
-        completedAt: new Date(),
-      });
+        updateQueueItem(item.videoId, {
+          status: 'failed',
+          error: errorMessage,
+        });
 
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-
-      updateQueueItem(item.videoId, {
-        status: 'failed',
-        error: errorMessage,
-      });
-
-      console.error(`Erro ao baixar ${item.video.title}:`, error);
-      return false;
+        return false;
+      }
     }
+    return false;
   }, [updateQueueItem]);
 
   /**
@@ -153,8 +167,8 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
 
       await processDownload(item);
 
-      // Pequeno delay entre downloads
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Delay entre downloads (3s para evitar rate limit do Cobalt)
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     setIsDownloading(false);
