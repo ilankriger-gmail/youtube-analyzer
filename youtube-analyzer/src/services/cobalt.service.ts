@@ -4,6 +4,11 @@ import type { CobaltSuccessResponse } from '../types';
 import { COBALT_INSTANCES } from '../constants';
 
 /**
+ * Use proxy API on Vercel to avoid CORS issues
+ */
+const USE_PROXY = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+
+/**
  * Opcoes de configuracao para o download
  */
 interface DownloadConfig {
@@ -41,6 +46,52 @@ export async function getDownloadUrlFromCobalt(
 
   let lastError: Error | null = null;
 
+  // If on Vercel, use the proxy API to bypass CORS
+  if (USE_PROXY) {
+    try {
+      const response = await fetch('/api/cobalt', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Proxy HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'error') {
+        throw new Error(data.error?.code || data.error || 'Cobalt returned error');
+      }
+
+      if (data.status === 'redirect' || data.status === 'tunnel') {
+        return {
+          status: data.status,
+          url: data.url,
+          filename: data.filename || `download_${Date.now()}.mp4`,
+        };
+      }
+
+      if (data.status === 'picker' && data.picker?.length > 0) {
+        return {
+          status: 'redirect',
+          url: data.picker[0].url,
+          filename: data.filename || `download_${Date.now()}.mp4`,
+        };
+      }
+
+      throw new Error(`Unexpected Cobalt response status: ${data.status}`);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  // Direct mode (local dev or non-Vercel)
   for (const instance of COBALT_INSTANCES) {
     try {
       const response = await fetch(`${instance}/`, {
@@ -71,7 +122,6 @@ export async function getDownloadUrlFromCobalt(
       }
 
       if (data.status === 'picker' && data.picker?.length > 0) {
-        // For picker responses (e.g. Instagram carousels), use the first item
         return {
           status: 'redirect',
           url: data.picker[0].url,

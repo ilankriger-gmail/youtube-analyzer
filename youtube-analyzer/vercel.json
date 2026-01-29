@@ -4,6 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/api/cobalt", "destination": "/api/cobalt" },
     { "source": "/(.*)", "destination": "/" }
   ]
 }
