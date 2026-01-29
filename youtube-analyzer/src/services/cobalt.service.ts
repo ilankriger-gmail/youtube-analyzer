@@ -1,7 +1,7 @@
-// ========== SECAO: SERVICO DE DOWNLOAD (YT-DLP BACKEND) ==========
+// ========== SECAO: SERVICO DE DOWNLOAD (COBALT API) ==========
 
 import type { CobaltSuccessResponse } from '../types';
-import { DOWNLOAD_API_URL } from '../constants';
+import { COBALT_INSTANCES } from '../constants';
 
 /**
  * Opcoes de configuracao para o download
@@ -12,24 +12,84 @@ interface DownloadConfig {
 }
 
 /**
- * Obtem URL de download do video via backend local yt-dlp
- * Mantem mesma interface do Cobalt para compatibilidade
+ * Obtem URL de download do video via Cobalt API
+ * Tenta multiplas instancias com fallback automatico
  */
 export async function getDownloadUrl(
   videoId: string,
   config: DownloadConfig = {}
 ): Promise<CobaltSuccessResponse> {
+  const videoUrl = `https://youtube.com/watch?v=${videoId}`;
+  return getDownloadUrlFromCobalt(videoUrl, config);
+}
+
+/**
+ * Obtem URL de download de qualquer URL suportada pelo Cobalt
+ * (YouTube, Instagram, etc.)
+ */
+export async function getDownloadUrlFromCobalt(
+  url: string,
+  config: DownloadConfig = {}
+): Promise<CobaltSuccessResponse> {
   const { quality = 'best' } = config;
 
-  // Constroi URL do endpoint de download
-  const downloadUrl = `${DOWNLOAD_API_URL}/api/download?videoId=${videoId}&quality=${quality}`;
-
-  // Retorna no mesmo formato que o Cobalt retornava
-  return {
-    status: 'redirect',
-    url: downloadUrl,
-    filename: `video_${videoId}.mp4`,
+  const body = {
+    url,
+    downloadMode: 'auto' as const,
+    videoQuality: quality === 'best' ? '1080' : quality,
   };
+
+  let lastError: Error | null = null;
+
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      const response = await fetch(`${instance}/`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'error') {
+        throw new Error(data.error?.code || 'Cobalt returned error');
+      }
+
+      if (data.status === 'redirect' || data.status === 'tunnel') {
+        return {
+          status: data.status,
+          url: data.url,
+          filename: data.filename || `download_${Date.now()}.mp4`,
+        };
+      }
+
+      if (data.status === 'picker' && data.picker?.length > 0) {
+        // For picker responses (e.g. Instagram carousels), use the first item
+        return {
+          status: 'redirect',
+          url: data.picker[0].url,
+          filename: data.filename || `download_${Date.now()}.mp4`,
+        };
+      }
+
+      throw new Error(`Unexpected Cobalt response status: ${data.status}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`Cobalt instance ${instance} failed:`, lastError.message);
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Todas as instancias Cobalt falharam. Ultimo erro: ${lastError?.message || 'desconhecido'}`
+  );
 }
 
 /**
@@ -117,19 +177,32 @@ function triggerDownload(blob: Blob, filename: string): void {
 }
 
 /**
- * Verifica se o backend de download esta disponivel
+ * Verifica se alguma instancia Cobalt esta disponivel
  */
 export async function checkCobaltAvailability(): Promise<boolean> {
-  try {
-    const response = await fetch(`${DOWNLOAD_API_URL}/api/check`);
-    if (response.ok) {
-      const data = await response.json();
-      return data.ready === true;
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      const response = await fetch(`${instance}/`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: 'https://youtube.com/watch?v=dQw4w9WgXcQ',
+          downloadMode: 'auto',
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      continue;
     }
-    return false;
-  } catch {
-    return false;
   }
+  return false;
 }
 
 /**
