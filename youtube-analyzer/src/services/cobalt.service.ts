@@ -1,7 +1,7 @@
-// ========== SECAO: SERVICO DE DOWNLOAD (COBALT API) ==========
+// ========== SECAO: SERVICO DE DOWNLOAD (COBALT API + SERVER FALLBACK) ==========
 
 import type { CobaltSuccessResponse } from '../types';
-import { COBALT_INSTANCES } from '../constants';
+import { COBALT_INSTANCES, DOWNLOAD_API_URL } from '../constants';
 
 /**
  * Use proxy API on Vercel to avoid CORS issues
@@ -283,4 +283,91 @@ export function getYouTubeUrl(videoId: string): string {
  */
 export function getYouTubeShortUrl(videoId: string): string {
   return `https://youtu.be/${videoId}`;
+}
+
+// ========== SERVER-SIDE DOWNLOAD (yt-dlp via Railway) ==========
+
+/**
+ * Builds the server-side download URL for a video.
+ * The browser will handle the actual download natively via iframe/window.
+ */
+export function getServerDownloadUrl(
+  videoId: string,
+  filename: string,
+  quality: string = '720'
+): string {
+  const params = new URLSearchParams({
+    videoId,
+    quality,
+    filename,
+  });
+  return `${DOWNLOAD_API_URL}/api/download?${params.toString()}`;
+}
+
+/**
+ * Triggers a file download via hidden iframe.
+ * This avoids blob memory issues and works reliably for multiple sequential downloads
+ * because the browser handles each as a native file download (Content-Disposition: attachment).
+ */
+export function triggerServerDownload(
+  videoId: string,
+  filename: string,
+  quality: string = '720'
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const url = getServerDownloadUrl(videoId, filename, quality);
+
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+
+    // Cleanup after a generous timeout (server-side download + stream can take a while)
+    const cleanupTimeout = setTimeout(() => {
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      resolve(); // Resolve even on timeout — download may still be happening in browser
+    }, 5 * 60 * 1000); // 5 minutes max
+
+    iframe.onload = () => {
+      // iframe onload fires when the response is received.
+      // For attachment downloads, the iframe stays mostly empty.
+      // We give a small delay then resolve.
+      setTimeout(() => {
+        clearTimeout(cleanupTimeout);
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+        resolve();
+      }, 2000);
+    };
+
+    iframe.onerror = () => {
+      clearTimeout(cleanupTimeout);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+      reject(new Error(`Failed to start download for ${videoId}`));
+    };
+
+    document.body.appendChild(iframe);
+  });
+}
+
+/**
+ * Checks if the server-side download API is available
+ */
+export async function checkServerAvailability(): Promise<boolean> {
+  try {
+    const response = await fetch(`${DOWNLOAD_API_URL}/api/check`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.ready === true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
