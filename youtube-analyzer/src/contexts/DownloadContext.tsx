@@ -14,8 +14,6 @@ import {
   getDownloadUrl,
   downloadWithProgress,
   getYouTubeUrl,
-  triggerServerDownload,
-  checkServerAvailability,
 } from '../services/cobalt.service';
 
 // ========== TIPOS ==========
@@ -81,41 +79,6 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
   }, []);
 
   /**
-   * Processa download de um video via server-side yt-dlp (iframe method).
-   * Falls back to Cobalt blob download if server is unavailable.
-   */
-  const processDownloadServer = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
-    try {
-      updateQueueItem(item.videoId, {
-        status: 'downloading',
-        startedAt: new Date(),
-        progress: 50, // Server-side doesn't report granular progress to client
-      });
-
-      await triggerServerDownload(item.videoId, item.filename);
-
-      updateQueueItem(item.videoId, {
-        status: 'completed',
-        progress: 100,
-        completedAt: new Date(),
-        error: undefined,
-      });
-
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      console.error(`Server download failed for ${item.video.title}:`, error);
-
-      updateQueueItem(item.videoId, {
-        status: 'failed',
-        error: `Server: ${errorMessage}`,
-      });
-
-      return false;
-    }
-  }, [updateQueueItem]);
-
-  /**
    * Processa download de um video via Cobalt (blob method - fallback).
    * Used when server-side download is unavailable.
    */
@@ -171,8 +134,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
 
   /**
    * Inicia download de multiplos videos.
-   * Strategy: Try server-side (yt-dlp via Railway) first for reliable multi-download.
-   * Falls back to Cobalt blob download if server is unavailable.
+   * Usa o mesmo processo pra cada video (Cobalt), um por vez, sequencial.
    */
   const startDownload = useCallback(async (videos: Video[]) => {
     if (videos.length === 0) return;
@@ -196,39 +158,24 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    // Check if server-side download is available
-    const serverAvailable = await checkServerAvailability();
-    const useServer = serverAvailable && videos.length > 1;
+    console.log(`[Download] Iniciando ${videos.length} video(s) — mesmo processo pra cada um`);
 
-    console.log(`[Download] Strategy: ${useServer ? 'SERVER (yt-dlp)' : 'COBALT (blob)'} for ${videos.length} video(s)`);
-
-    // Processa downloads sequencialmente
+    // Processa downloads sequencialmente — mesmo processo pra 1 ou N videos
     for (let i = 0; i < newItems.length; i++) {
       if (controller.signal.aborted) break;
 
-      const item = newItems[i];
+      await processDownloadCobalt(newItems[i]);
 
-      if (useServer) {
-        const success = await processDownloadServer(item);
-        if (!success) {
-          // Fallback to Cobalt for this specific video
-          console.log(`[Download] Server failed for ${item.videoId}, trying Cobalt fallback...`);
-          await processDownloadCobalt(item);
-        }
-      } else {
-        await processDownloadCobalt(item);
-      }
-
-      // Delay between downloads: longer for multi-video to avoid browser throttling
+      // Delay de 5s entre downloads pra evitar rate limit
       if (i < newItems.length - 1) {
-        const delay = useServer ? 8000 : 3000; // 8s for server (yt-dlp processing time), 3s for Cobalt
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(`[Download] Aguardando 5s antes do proximo...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
     setIsDownloading(false);
     setAbortController(null);
-  }, [processDownloadServer, processDownloadCobalt]);
+  }, [processDownloadCobalt]);
 
   /**
    * Cancela download de um video especifico
@@ -279,32 +226,20 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    // Check server availability for retries too
-    const serverAvailable = await checkServerAvailability();
-    const useServer = serverAvailable && failedItems.length > 1;
-
     for (let i = 0; i < failedItems.length; i++) {
       if (controller.signal.aborted) break;
 
       const item = { ...failedItems[i], status: 'pending' as DownloadStatus, error: undefined };
-
-      if (useServer) {
-        const success = await processDownloadServer(item);
-        if (!success) {
-          await processDownloadCobalt(item);
-        }
-      } else {
-        await processDownloadCobalt(item);
-      }
+      await processDownloadCobalt(item);
 
       if (i < failedItems.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, useServer ? 8000 : 3000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
     setIsDownloading(false);
     setAbortController(null);
-  }, [queue, processDownloadServer, processDownloadCobalt]);
+  }, [queue, processDownloadCobalt]);
 
   /**
    * Limpa a fila
