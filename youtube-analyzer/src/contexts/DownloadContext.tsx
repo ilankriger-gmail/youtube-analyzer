@@ -15,7 +15,6 @@ import {
   downloadWithProgress,
   getYouTubeUrl,
   triggerServerDownload,
-  checkServerAvailability,
 } from '../services/cobalt.service';
 
 // ========== TIPOS ==========
@@ -195,25 +194,19 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    // Check if server-side download (yt-dlp) is available
-    const serverAvailable = await checkServerAvailability().catch(() => false);
-    console.log(`[Download] Iniciando ${videos.length} video(s) — método: ${serverAvailable ? 'yt-dlp (server)' : 'Cobalt (fallback)'}`);
+    console.log(`[Download] Iniciando ${videos.length} video(s) — Cobalt primeiro, yt-dlp como fallback`);
 
     // Processa downloads sequencialmente
     for (let i = 0; i < newItems.length; i++) {
       if (controller.signal.aborted) break;
 
-      let success = false;
+      // Try Cobalt first (uses Vercel proxy, no CORS issues)
+      let success = await processDownloadCobalt(newItems[i]);
 
-      // Try server-side (yt-dlp) first
-      if (serverAvailable) {
-        success = await processDownloadServer(newItems[i]);
-      }
-
-      // Fallback to Cobalt if server failed or unavailable
+      // Fallback to server-side yt-dlp if Cobalt failed
       if (!success) {
-        console.log(`[Download] Tentando Cobalt como fallback para ${newItems[i].video.title}...`);
-        await processDownloadCobalt(newItems[i]);
+        console.log(`[Download] Cobalt falhou, tentando yt-dlp para ${newItems[i].video.title}...`);
+        success = await processDownloadServer(newItems[i]);
       }
 
       // Delay de 3s entre downloads
@@ -276,19 +269,14 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    const serverAvailable = await checkServerAvailability().catch(() => false);
-
     for (let i = 0; i < failedItems.length; i++) {
       if (controller.signal.aborted) break;
 
       const item = { ...failedItems[i], status: 'pending' as DownloadStatus, error: undefined };
 
-      let success = false;
-      if (serverAvailable) {
-        success = await processDownloadServer(item);
-      }
+      let success = await processDownloadCobalt(item);
       if (!success) {
-        await processDownloadCobalt(item);
+        success = await processDownloadServer(item);
       }
 
       if (i < failedItems.length - 1) {

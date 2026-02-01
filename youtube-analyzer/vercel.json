@@ -5,6 +5,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/cobalt", "destination": "/api/cobalt" },
+    { "source": "/api/download-proxy", "destination": "/api/download-proxy" },
     { "source": "/(.*)", "destination": "/" }
   ]
 }

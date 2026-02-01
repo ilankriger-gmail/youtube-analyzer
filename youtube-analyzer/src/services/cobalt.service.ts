@@ -69,7 +69,7 @@ export async function getDownloadUrlFromCobalt(
         throw new Error(data.error?.code || data.error || 'Cobalt returned error');
       }
 
-      if (data.status === 'redirect' || data.status === 'tunnel') {
+      if (data.status === 'redirect') {
         return {
           status: data.status,
           url: data.url,
@@ -77,11 +77,26 @@ export async function getDownloadUrlFromCobalt(
         };
       }
 
-      if (data.status === 'picker' && data.picker?.length > 0) {
+      if (data.status === 'tunnel') {
+        // Tunnel URLs have CORS restrictions - proxy through our Vercel endpoint
+        const fname = data.filename || `download_${Date.now()}.mp4`;
+        const proxyUrl = `/api/download-proxy?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(fname)}`;
         return {
           status: 'redirect',
-          url: data.picker[0].url,
-          filename: data.filename || `download_${Date.now()}.mp4`,
+          url: proxyUrl,
+          filename: fname,
+        };
+      }
+
+      if (data.status === 'picker' && data.picker?.length > 0) {
+        const fname = data.filename || `download_${Date.now()}.mp4`;
+        const pickerUrl = data.picker[0].url;
+        // Also proxy picker URLs to avoid CORS
+        const proxyUrl = `/api/download-proxy?url=${encodeURIComponent(pickerUrl)}&filename=${encodeURIComponent(fname)}`;
+        return {
+          status: 'redirect',
+          url: proxyUrl,
+          filename: fname,
         };
       }
 
