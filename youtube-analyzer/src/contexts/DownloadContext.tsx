@@ -11,7 +11,6 @@ import type { Video, DownloadQueueItem, DownloadStatus } from '../types';
 import { generateFilename } from '../utils/filename.utils';
 import { generateVideoCSV } from '../utils/csv.utils';
 import {
-  getDownloadUrl,
   getYouTubeUrl,
   getServerDownloadUrl,
 } from '../services/cobalt.service';
@@ -168,51 +167,6 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
   }, [updateQueueItem]);
 
   /**
-   * Download via Cobalt API — primary method
-   * Gets the proxied download URL and triggers a native browser download
-   */
-  const processDownloadCobalt = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
-    try {
-      updateQueueItem(item.videoId, {
-        status: 'downloading',
-        startedAt: new Date(),
-        progress: 0,
-      });
-
-      // Get the proxied download URL from Cobalt
-      const response = await getDownloadUrl(item.videoId);
-
-      // Trigger native browser download via link click (no CORS issues, no timeout)
-      const link = document.createElement('a');
-      link.href = response.url;
-      link.download = item.filename;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      updateQueueItem(item.videoId, {
-        status: 'completed',
-        progress: 100,
-        completedAt: new Date(),
-        error: undefined,
-      });
-
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`Cobalt download error for ${item.video.title}:`, error);
-
-      updateQueueItem(item.videoId, {
-        status: 'failed',
-        error: errorMessage,
-      });
-
-      return false;
-    }
-  }, [updateQueueItem]);
-
-  /**
    * Inicia download de multiplos videos.
    * Usa o mesmo processo pra cada video (Cobalt), um por vez, sequencial.
    */
@@ -254,7 +208,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
 
     setIsDownloading(false);
     setAbortController(null);
-  }, [processDownloadCobalt]);
+  }, [processDownloadServer]);
 
   /**
    * Cancela download de um video especifico
@@ -318,7 +272,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
 
     setIsDownloading(false);
     setAbortController(null);
-  }, [queue, processDownloadCobalt]);
+  }, [queue, processDownloadServer]);
 
   /**
    * Limpa a fila

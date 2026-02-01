@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -123,7 +124,7 @@ export function TikTokCreatorsProvider({ children }: TikTokCreatorsProviderProps
   const [downloadQueue, setDownloadQueue] = useState<DownloadQueueItem[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [downloadCancelled, setDownloadCancelled] = useState(false);
+  const cancelledRef = useRef(false);
 
   // ========== BUSCAR CRIADOR ==========
 
@@ -299,11 +300,11 @@ export function TikTokCreatorsProvider({ children }: TikTokCreatorsProviderProps
     setDownloadQueue(queue);
     setIsDownloading(true);
     setIsModalOpen(true);
-    setDownloadCancelled(false);
+    cancelledRef.current = false;
 
     // Processar downloads sequencialmente
     for (let i = 0; i < queue.length; i++) {
-      if (downloadCancelled) break;
+      if (cancelledRef.current) break;
 
       const item = queue[i];
 
@@ -351,10 +352,10 @@ export function TikTokCreatorsProvider({ children }: TikTokCreatorsProviderProps
     }
 
     setIsDownloading(false);
-  }, [selectedIds, filteredVideos, quality, downloadCancelled]);
+  }, [selectedIds, filteredVideos, quality]);
 
   const cancelDownload = useCallback(() => {
-    setDownloadCancelled(true);
+    cancelledRef.current = true;
     setIsDownloading(false);
   }, []);
 

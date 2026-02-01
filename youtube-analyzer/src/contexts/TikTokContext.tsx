@@ -7,6 +7,7 @@ import {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -127,7 +128,7 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
   const [downloadQueue, setDownloadQueue] = useState<DownloadQueueItem[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [downloadCancelled, setDownloadCancelled] = useState(false);
+  const cancelledRef = useRef(false);
 
   // ========== FILTROS ==========
 
@@ -329,11 +330,11 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
     setDownloadQueue(queue);
     setIsDownloading(true);
     setIsModalOpen(true);
-    setDownloadCancelled(false);
+    cancelledRef.current = false;
 
     // Processar downloads sequencialmente
     for (let i = 0; i < queue.length; i++) {
-      if (downloadCancelled) break;
+      if (cancelledRef.current) break;
 
       const item = queue[i];
 
@@ -381,10 +382,10 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
     }
 
     setIsDownloading(false);
-  }, [selectedIds, filteredVideos, quality, downloadCancelled]);
+  }, [selectedIds, filteredVideos, quality]);
 
   const cancelDownload = useCallback(() => {
-    setDownloadCancelled(true);
+    cancelledRef.current = true;
     setIsDownloading(false);
   }, []);
 

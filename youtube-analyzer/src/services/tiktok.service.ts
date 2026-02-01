@@ -184,7 +184,15 @@ export async function downloadTikTokWithProgress(
   const response = await fetch(downloadUrl);
 
   if (!response.ok) {
-    throw new Error(`Erro no download: ${response.status}`);
+    const errData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(errData.details || errData.error || `Erro no download: ${response.status}`);
+  }
+
+  // Validar content-type
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json') || contentType.includes('text/html')) {
+    const errData = await response.json().catch(() => ({ error: 'Resposta inesperada' }));
+    throw new Error(errData.details || errData.error || 'Servidor retornou erro');
   }
 
   const contentLength = response.headers.get('content-length');
@@ -210,6 +218,11 @@ export async function downloadTikTokWithProgress(
     } else {
       onProgress(Math.min(95, Math.round(received / 1000000)));
     }
+  }
+
+  // Verificar tamanho mínimo
+  if (received < 10000) {
+    throw new Error(`Arquivo muito pequeno (${Math.round(received / 1024)}KB)`);
   }
 
   // Extrair filename do header ou gerar
