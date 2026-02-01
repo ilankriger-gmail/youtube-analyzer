@@ -14,6 +14,8 @@ import {
   getDownloadUrl,
   downloadWithProgress,
   getYouTubeUrl,
+  triggerServerDownload,
+  checkServerAvailability,
 } from '../services/cobalt.service';
 
 // ========== TIPOS ==========
@@ -82,6 +84,41 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
    * Processa download de um video via Cobalt (blob method - fallback).
    * Used when server-side download is unavailable.
    */
+  /**
+   * Download via servidor yt-dlp (Railway) — método principal
+   */
+  const processDownloadServer = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
+    try {
+      updateQueueItem(item.videoId, {
+        status: 'downloading',
+        startedAt: new Date(),
+        progress: 0,
+      });
+
+      await triggerServerDownload(item.videoId, item.filename, '720');
+
+      updateQueueItem(item.videoId, {
+        status: 'completed',
+        progress: 100,
+        completedAt: new Date(),
+        error: undefined,
+      });
+
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Server download error for ${item.video.title}:`, error);
+      updateQueueItem(item.videoId, {
+        status: 'failed',
+        error: errorMessage,
+      });
+      return false;
+    }
+  }, [updateQueueItem]);
+
+  /**
+   * Download via Cobalt API — fallback
+   */
   const processDownloadCobalt = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
     const MAX_RETRIES = 2;
 
@@ -113,7 +150,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
 
         return true;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`Cobalt download error for ${item.video.title} (attempt ${attempt + 1}):`, error);
 
         if (attempt < MAX_RETRIES) {
@@ -158,18 +195,31 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    console.log(`[Download] Iniciando ${videos.length} video(s) — mesmo processo pra cada um`);
+    // Check if server-side download (yt-dlp) is available
+    const serverAvailable = await checkServerAvailability().catch(() => false);
+    console.log(`[Download] Iniciando ${videos.length} video(s) — método: ${serverAvailable ? 'yt-dlp (server)' : 'Cobalt (fallback)'}`);
 
-    // Processa downloads sequencialmente — mesmo processo pra 1 ou N videos
+    // Processa downloads sequencialmente
     for (let i = 0; i < newItems.length; i++) {
       if (controller.signal.aborted) break;
 
-      await processDownloadCobalt(newItems[i]);
+      let success = false;
 
-      // Delay de 5s entre downloads pra evitar rate limit
+      // Try server-side (yt-dlp) first
+      if (serverAvailable) {
+        success = await processDownloadServer(newItems[i]);
+      }
+
+      // Fallback to Cobalt if server failed or unavailable
+      if (!success) {
+        console.log(`[Download] Tentando Cobalt como fallback para ${newItems[i].video.title}...`);
+        await processDownloadCobalt(newItems[i]);
+      }
+
+      // Delay de 3s entre downloads
       if (i < newItems.length - 1) {
-        console.log(`[Download] Aguardando 5s antes do proximo...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        console.log(`[Download] Aguardando 3s antes do proximo...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
 
@@ -226,14 +276,23 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
+    const serverAvailable = await checkServerAvailability().catch(() => false);
+
     for (let i = 0; i < failedItems.length; i++) {
       if (controller.signal.aborted) break;
 
       const item = { ...failedItems[i], status: 'pending' as DownloadStatus, error: undefined };
-      await processDownloadCobalt(item);
+
+      let success = false;
+      if (serverAvailable) {
+        success = await processDownloadServer(item);
+      }
+      if (!success) {
+        await processDownloadCobalt(item);
+      }
 
       if (i < failedItems.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
 
