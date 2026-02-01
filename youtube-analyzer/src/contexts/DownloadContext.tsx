@@ -12,7 +12,6 @@ import { generateFilename } from '../utils/filename.utils';
 import { generateVideoCSV } from '../utils/csv.utils';
 import {
   getDownloadUrl,
-  downloadWithProgress,
   getYouTubeUrl,
   triggerServerDownload,
 } from '../services/cobalt.service';
@@ -116,56 +115,48 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
   }, [updateQueueItem]);
 
   /**
-   * Download via Cobalt API — fallback
+   * Download via Cobalt API — primary method
+   * Gets the proxied download URL and triggers a native browser download
    */
   const processDownloadCobalt = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
-    const MAX_RETRIES = 2;
+    try {
+      updateQueueItem(item.videoId, {
+        status: 'downloading',
+        startedAt: new Date(),
+        progress: 0,
+      });
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        updateQueueItem(item.videoId, {
-          status: 'downloading',
-          startedAt: new Date(),
-          progress: 0,
-          error: attempt > 0 ? `Tentativa ${attempt + 1} (Cobalt)...` : undefined,
-        });
+      // Get the proxied download URL from Cobalt
+      const response = await getDownloadUrl(item.videoId);
 
-        const response = await getDownloadUrl(item.videoId);
+      // Trigger native browser download via link click (no CORS issues, no timeout)
+      const link = document.createElement('a');
+      link.href = response.url;
+      link.download = item.filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-        await downloadWithProgress(
-          response.url,
-          item.filename,
-          (progress) => {
-            updateQueueItem(item.videoId, { progress });
-          }
-        );
+      updateQueueItem(item.videoId, {
+        status: 'completed',
+        progress: 100,
+        completedAt: new Date(),
+        error: undefined,
+      });
 
-        updateQueueItem(item.videoId, {
-          status: 'completed',
-          progress: 100,
-          completedAt: new Date(),
-          error: undefined,
-        });
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Cobalt download error for ${item.video.title}:`, error);
 
-        return true;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Cobalt download error for ${item.video.title} (attempt ${attempt + 1}):`, error);
+      updateQueueItem(item.videoId, {
+        status: 'failed',
+        error: errorMessage,
+      });
 
-        if (attempt < MAX_RETRIES) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
-          continue;
-        }
-
-        updateQueueItem(item.videoId, {
-          status: 'failed',
-          error: errorMessage,
-        });
-
-        return false;
-      }
+      return false;
     }
-    return false;
   }, [updateQueueItem]);
 
   /**
