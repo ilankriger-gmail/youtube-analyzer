@@ -18,11 +18,21 @@ import {
   type TikTokVideo,
   type TikTokQuality,
 } from '../services/tiktok.service';
-import type { UnifiedFilterState } from '../types/filter.types';
-import { INITIAL_FILTER_STATE } from '../types/filter.types';
-import { applyTikTokFilters, hasActiveFilters as checkActiveFilters } from '../utils/filter.utils';
 
 // ========== TIPOS ==========
+
+type SortOption = 'views-desc' | 'views-asc' | 'date-desc' | 'date-asc' | 'duration-desc' | 'duration-asc';
+type DateRange = '7' | '30' | '60' | '90' | '365' | 'all';
+
+interface TikTokFilters {
+  minViews: number | null;
+  maxViews: number | null;
+  minDuration: number | null;
+  maxDuration: number | null;
+  sortBy: SortOption;
+  dateRange: DateRange;
+  searchText: string;
+}
 
 interface DownloadQueueItem {
   video: TikTokVideo;
@@ -44,13 +54,10 @@ interface TikTokContextType {
   // Sincronizacao com banco
   syncVideos: () => Promise<void>;
 
-  // Filtros unificados
-  filters: UnifiedFilterState;
-  updateFilters: (partial: Partial<UnifiedFilterState>) => void;
+  // Filtros
+  filters: TikTokFilters;
+  setFilters: (filters: Partial<TikTokFilters>) => void;
   resetFilters: () => void;
-  hasActiveFilters: boolean;
-  totalCount: number;
-  filteredCount: number;
 
   // Selecao
   selectedIds: Set<string>;
@@ -82,6 +89,18 @@ interface TikTokContextType {
 
 const TikTokContext = createContext<TikTokContextType | null>(null);
 
+// ========== DEFAULT FILTERS ==========
+
+const DEFAULT_FILTERS: TikTokFilters = {
+  minViews: null,
+  maxViews: null,
+  minDuration: null,
+  maxDuration: null,
+  sortBy: 'views-desc',
+  dateRange: 'all',
+  searchText: '',
+};
+
 // ========== PROVIDER ==========
 
 interface TikTokProviderProps {
@@ -97,8 +116,8 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const [profile, setProfile] = useState<{ username: string; videoCount: number } | null>(null);
 
-  // Filtros unificados
-  const [filters, setFilters] = useState<UnifiedFilterState>(INITIAL_FILTER_STATE);
+  // Filtros
+  const [filters, setFiltersState] = useState<TikTokFilters>(DEFAULT_FILTERS);
 
   // Selecao
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -110,25 +129,88 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [downloadCancelled, setDownloadCancelled] = useState(false);
 
-  // ========== FILTROS UNIFICADOS ==========
+  // ========== FILTROS ==========
 
-  const updateFilters = useCallback((partial: Partial<UnifiedFilterState>) => {
-    setFilters(prev => ({ ...prev, ...partial }));
+  const setFilters = useCallback((newFilters: Partial<TikTokFilters>) => {
+    setFiltersState(prev => ({ ...prev, ...newFilters }));
   }, []);
 
   const resetFilters = useCallback(() => {
-    setFilters(INITIAL_FILTER_STATE);
+    setFiltersState(DEFAULT_FILTERS);
   }, []);
 
-  const hasActiveFilters = useMemo(() => checkActiveFilters(filters), [filters]);
-
-  // Videos filtrados e ordenados via sistema unificado
+  // Videos filtrados e ordenados
   const filteredVideos = useMemo(() => {
-    return applyTikTokFilters(videos, filters);
-  }, [videos, filters]);
+    let result = [...videos];
 
-  const totalCount = videos.length;
-  const filteredCount = filteredVideos.length;
+    // Filtro de busca por texto
+    if (filters.searchText.trim()) {
+      const search = filters.searchText.toLowerCase().trim();
+      result = result.filter(v =>
+        v.title.toLowerCase().includes(search) ||
+        v.channel.toLowerCase().includes(search)
+      );
+    }
+
+    // Filtro de periodo (data)
+    if (filters.dateRange !== 'all') {
+      const days = parseInt(filters.dateRange);
+      const now = new Date();
+      const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const cutoffStr = cutoffDate.toISOString().slice(0, 10).replace(/-/g, '');
+
+      result = result.filter(v => {
+        if (!v.uploadDate) return false;
+        return v.uploadDate >= cutoffStr;
+      });
+    }
+
+    // Filtro de views
+    if (filters.minViews !== null) {
+      result = result.filter(v => v.views >= filters.minViews!);
+    }
+    if (filters.maxViews !== null) {
+      result = result.filter(v => v.views <= filters.maxViews!);
+    }
+
+    // Filtro de duracao
+    if (filters.minDuration !== null) {
+      result = result.filter(v => v.duration >= filters.minDuration!);
+    }
+    if (filters.maxDuration !== null) {
+      result = result.filter(v => v.duration <= filters.maxDuration!);
+    }
+
+    // Ordenacao
+    const [field, order] = filters.sortBy.split('-') as [string, 'asc' | 'desc'];
+    const multiplier = order === 'desc' ? -1 : 1;
+
+    result.sort((a, b) => {
+      let valueA: number, valueB: number;
+
+      switch (field) {
+        case 'views':
+          valueA = a.views || 0;
+          valueB = b.views || 0;
+          break;
+        case 'duration':
+          valueA = a.duration || 0;
+          valueB = b.duration || 0;
+          break;
+        case 'date':
+          valueA = parseInt(a.uploadDate) || 0;
+          valueB = parseInt(b.uploadDate) || 0;
+          break;
+        default:
+          valueA = 0;
+          valueB = 0;
+      }
+
+      return (valueA - valueB) * multiplier;
+    });
+
+    return result;
+  }, [videos, filters]);
 
   // ========== TOP 5 / BOTTOM 5 ==========
 
@@ -142,6 +224,7 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
 
   // ========== CARREGAR DO BANCO ==========
 
+  // Carrega videos do banco de dados ao iniciar
   useEffect(() => {
     const loadFromDB = async () => {
       setIsLoading(true);
@@ -236,6 +319,7 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
 
     const selectedVideos = filteredVideos.filter(v => selectedIds.has(v.id));
 
+    // Criar fila
     const queue: DownloadQueueItem[] = selectedVideos.map(video => ({
       video,
       status: 'pending',
@@ -247,11 +331,13 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
     setIsModalOpen(true);
     setDownloadCancelled(false);
 
+    // Processar downloads sequencialmente
     for (let i = 0; i < queue.length; i++) {
       if (downloadCancelled) break;
 
       const item = queue[i];
 
+      // Marcar como downloading
       setDownloadQueue(prev =>
         prev.map((q, idx) =>
           idx === i ? { ...q, status: 'downloading' } : q
@@ -273,12 +359,14 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
           }
         );
 
+        // Marcar como completo
         setDownloadQueue(prev =>
           prev.map((q, idx) =>
             idx === i ? { ...q, status: 'completed', progress: 100 } : q
           )
         );
       } catch (err) {
+        // Marcar como falha
         setDownloadQueue(prev =>
           prev.map((q, idx) =>
             idx === i ? { ...q, status: 'failed', error: err instanceof Error ? err.message : 'Erro' } : q
@@ -286,6 +374,7 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
         );
       }
 
+      // Delay entre downloads
       if (i < queue.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
@@ -323,11 +412,8 @@ export function TikTokProvider({ children }: TikTokProviderProps) {
     profile,
     syncVideos,
     filters,
-    updateFilters,
+    setFilters,
     resetFilters,
-    hasActiveFilters,
-    totalCount,
-    filteredCount,
     selectedIds,
     toggleSelection,
     selectTop5,
