@@ -145,14 +145,9 @@ const Download = {
     this.renderQueue();
 
     try {
-      // Usa download direto se tiver video_url (mais rapido e confiavel)
-      // Caso contrario usa yt-dlp
-      let downloadUrl;
-      if (item.video.video_url) {
-        downloadUrl = getDirectDownloadUrl(item.video.video_url, item.filename);
-      } else {
-        downloadUrl = getDownloadUrl(item.video.url, quality, item.filename);
-      }
+      // Sempre usa yt-dlp com a URL do post (URLs CDN do Instagram expiram rapido)
+      const postUrl = item.video.url || `https://www.instagram.com/p/${item.video.shortcode}/`;
+      const downloadUrl = getDownloadUrl(postUrl, quality, item.filename);
 
       // Cria link de download
       const link = document.createElement('a');
