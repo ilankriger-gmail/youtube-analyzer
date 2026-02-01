@@ -3,7 +3,7 @@
 import { useFilterContext } from '../contexts';
 
 /**
- * Hook para acessar e manipular filtros
+ * Hook para acessar e manipular filtros unificados
  */
 export function useFilters() {
   const {
@@ -11,29 +11,18 @@ export function useFilters() {
     filteredVideos,
     totalCount,
     filteredCount,
-    setDurationFilter,
-    setKeyword,
-    setDateRange,
-    setCustomDateRange,
-    setSortBy,
+    updateFilters,
     clearFilters,
     hasActiveFilters,
   } = useFilterContext();
 
   return {
-    // Estado
     filters,
     filteredVideos,
     totalCount,
     filteredCount,
     hasActiveFilters,
-
-    // Acoes
-    setDurationFilter,
-    setKeyword,
-    setDateRange,
-    setCustomDateRange,
-    setSortBy,
+    updateFilters,
     clearFilters,
   };
 }

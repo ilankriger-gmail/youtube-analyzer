@@ -5,3 +5,4 @@ export * from './duration.utils';
 export * from './number.utils';
 export * from './filename.utils';
 export * from './video.utils';
+export * from './filter.utils';

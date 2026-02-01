@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Header } from './Header';
-import { FilterBar } from '../components/filters';
+import { UnifiedFilterBar } from '../components/filters/UnifiedFilterBar';
 import { SelectionBar, DownloadModal } from '../components/download';
 import { VideoGrid, VideoList, ViewToggle, EmptyState, type ViewMode } from '../components/video';
 import { LoadingSpinner } from '../components/ui';
@@ -11,7 +11,7 @@ import { UI_TEXT } from '../constants';
 
 export function MainLayout() {
   const { isLoading, error, refreshVideos } = useVideos();
-  const { filteredVideos, totalCount, clearFilters, hasActiveFilters } = useFilters();
+  const { filters, filteredVideos, totalCount, filteredCount, updateFilters, clearFilters, hasActiveFilters } = useFilters();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Estado de carregamento
@@ -46,8 +46,17 @@ export function MainLayout() {
       <Header />
 
       <main className="container mx-auto px-4 py-6">
-        {/* Barra de filtros */}
-        <FilterBar className="mb-6" />
+        {/* Barra de filtros unificada */}
+        <UnifiedFilterBar
+          platform="youtube"
+          filters={filters}
+          onChange={updateFilters}
+          onClear={clearFilters}
+          totalCount={totalCount}
+          filteredCount={filteredCount}
+          hasActiveFilters={hasActiveFilters}
+          accentColor="#ff0000"
+        />
 
         {/* Barra de selecao */}
         <SelectionBar className="mb-6" />
