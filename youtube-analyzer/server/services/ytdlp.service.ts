@@ -16,6 +16,49 @@ const execAsync = promisify(exec);
 const COOKIES_FILE_PATH = join(tmpdir(), 'youtube_cookies.txt');
 
 /**
+ * Converte cookies para o formato Netscape correto (tab-separated, sem trailing backslash)
+ */
+function sanitizeCookies(raw: string): string {
+  const lines = raw.split('\n');
+  const cleaned: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Preservar comentários e linhas vazias
+    if (!trimmed || trimmed.startsWith('#')) {
+      cleaned.push(trimmed);
+      continue;
+    }
+
+    // Remover trailing backslash
+    let fixed = trimmed.replace(/\\+$/, '').trim();
+
+    // Normalizar separadores: trocar múltiplos espaços/tabs por tab único
+    // Formato Netscape: domain \t flag \t path \t secure \t expiry \t name \t value
+    const parts = fixed.split(/\s+/);
+
+    if (parts.length >= 7) {
+      // Juntar os 7 campos com tab (valor pode conter espaços, então junta tudo do 7° em diante)
+      const [domain, flag, path, secure, expiry, name, ...valueParts] = parts;
+      fixed = [domain, flag, path, secure, expiry, name, valueParts.join(' ')].join('\t');
+      cleaned.push(fixed);
+    } else if (parts.length > 0) {
+      // Linha malformada, pular
+      console.warn('[Cookies] Skipping malformed line:', fixed.substring(0, 80));
+    }
+  }
+
+  // Garantir header Netscape
+  const header = '# Netscape HTTP Cookie File';
+  const body = cleaned.join('\n');
+  if (!body.includes(header)) {
+    return header + '\n' + body + '\n';
+  }
+  return body + '\n';
+}
+
+/**
  * Salva cookies do YouTube a partir da variável de ambiente
  */
 async function ensureCookiesFile(): Promise<string | null> {
@@ -28,11 +71,15 @@ async function ensureCookiesFile(): Promise<string | null> {
   try {
     // Decodifica base64 se necessário
     let cookies = cookiesContent;
-    if (!cookiesContent.startsWith('#')) {
+    if (!cookiesContent.startsWith('#') && !cookiesContent.startsWith('.')) {
       cookies = Buffer.from(cookiesContent, 'base64').toString('utf-8');
     }
 
+    // Sanitizar para formato Netscape correto
+    cookies = sanitizeCookies(cookies);
+
     await writeFile(COOKIES_FILE_PATH, cookies, 'utf-8');
+    console.log('[Cookies] Arquivo salvo com sucesso:', COOKIES_FILE_PATH);
     return COOKIES_FILE_PATH;
   } catch (error) {
     console.error('Erro ao salvar cookies:', error);
