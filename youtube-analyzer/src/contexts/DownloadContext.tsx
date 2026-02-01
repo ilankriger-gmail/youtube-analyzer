@@ -13,7 +13,7 @@ import { generateVideoCSV } from '../utils/csv.utils';
 import {
   getDownloadUrl,
   getYouTubeUrl,
-  triggerServerDownload,
+  getServerDownloadUrl,
 } from '../services/cobalt.service';
 
 // ========== TIPOS ==========
@@ -79,11 +79,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
   }, []);
 
   /**
-   * Processa download de um video via Cobalt (blob method - fallback).
-   * Used when server-side download is unavailable.
-   */
-  /**
-   * Download via servidor yt-dlp (Railway) — método principal
+   * Download via servidor yt-dlp (Railway) — fetch+blob pra garantir que completa
    */
   const processDownloadServer = useCallback(async (item: DownloadQueueItem): Promise<boolean> => {
     try {
@@ -93,7 +89,64 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
         progress: 0,
       });
 
-      await triggerServerDownload(item.videoId, item.filename, '720');
+      const url = getServerDownloadUrl(item.videoId, item.filename, '720');
+      console.log(`[Download] Fetch+blob: ${item.video.title}`);
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errData.details || errData.error || `HTTP ${response.status}`);
+      }
+
+      // Verificar content-type
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json') || contentType.includes('text/html')) {
+        const errData = await response.json().catch(() => ({ error: 'Resposta inesperada' }));
+        throw new Error(errData.details || errData.error || 'Servidor retornou erro');
+      }
+
+      // Ler com progresso
+      const contentLength = response.headers.get('content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      const reader = response.body?.getReader();
+
+      if (!reader) throw new Error('Response body não disponível');
+
+      const chunks: BlobPart[] = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        received += value.length;
+
+        if (total > 0) {
+          const pct = Math.round((received / total) * 100);
+          updateQueueItem(item.videoId, { progress: pct });
+        }
+      }
+
+      // Verificar tamanho mínimo
+      if (received < 50000) {
+        throw new Error(`Arquivo muito pequeno (${Math.round(received / 1024)}KB)`);
+      }
+
+      // Criar blob e disparar download
+      const blob = new Blob(chunks, { type: 'video/mp4' });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = item.filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+
+      console.log(`[Download] Concluído: ${item.filename} (${Math.round(received / 1024 / 1024)}MB)`);
 
       updateQueueItem(item.videoId, {
         status: 'completed',
@@ -105,7 +158,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`Server download error for ${item.video.title}:`, error);
+      console.error(`Server download error for ${item.video.title}:`, errorMessage);
       updateQueueItem(item.videoId, {
         status: 'failed',
         error: errorMessage,
