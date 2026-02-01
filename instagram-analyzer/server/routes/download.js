@@ -8,6 +8,63 @@ const os = require('os');
 
 const router = express.Router();
 
+// ========== COOKIES DO INSTAGRAM ==========
+const COOKIES_FILE_PATH = path.join(os.tmpdir(), 'instagram_cookies.txt');
+
+/**
+ * Sanitiza cookies para formato Netscape (tab-separated, sem trailing backslash)
+ */
+function sanitizeCookies(raw) {
+  const lines = raw.split('\n');
+  const cleaned = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      cleaned.push(trimmed);
+      continue;
+    }
+
+    let fixed = trimmed.replace(/\\+$/, '').trim();
+    const parts = fixed.split(/\s+/);
+
+    if (parts.length >= 7) {
+      const [domain, flag, pathVal, secure, expiry, name, ...valueParts] = parts;
+      fixed = [domain, flag, pathVal, secure, expiry, name, valueParts.join(' ')].join('\t');
+      cleaned.push(fixed);
+    }
+  }
+
+  const header = '# Netscape HTTP Cookie File';
+  const body = cleaned.join('\n');
+  if (!body.includes(header)) {
+    return header + '\n' + body + '\n';
+  }
+  return body + '\n';
+}
+
+/**
+ * Salva cookies do Instagram a partir da variável de ambiente
+ */
+function ensureCookiesFile() {
+  const cookiesContent = process.env.INSTAGRAM_COOKIES;
+  if (!cookiesContent) return null;
+
+  try {
+    let cookies = cookiesContent;
+    if (!cookiesContent.startsWith('#') && !cookiesContent.startsWith('.')) {
+      cookies = Buffer.from(cookiesContent, 'base64').toString('utf-8');
+    }
+    cookies = sanitizeCookies(cookies);
+    fs.writeFileSync(COOKIES_FILE_PATH, cookies, 'utf-8');
+    console.log('[Cookies] Instagram cookies salvas:', COOKIES_FILE_PATH);
+    return COOKIES_FILE_PATH;
+  } catch (error) {
+    console.error('[Cookies] Erro ao salvar:', error);
+    return null;
+  }
+}
+
 /**
  * Mapeia qualidade para formato yt-dlp
  */
@@ -51,6 +108,9 @@ router.get('/download', async (req, res) => {
   const isAudio = quality === 'audio';
   const outputFile = isAudio ? tempFile.replace('.mp4', '.mp3') : tempFile;
 
+  // Cookies do Instagram
+  const cookiesFile = ensureCookiesFile();
+
   // Monta argumentos do yt-dlp
   const args = [
     '-f', getFormatString(quality),
@@ -59,8 +119,15 @@ router.get('/download', async (req, res) => {
     '--no-playlist',
     '--no-warnings',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    url,
   ];
+
+  // Adicionar cookies se disponíveis
+  if (cookiesFile) {
+    args.push('--cookies', cookiesFile);
+    console.log('[Download] Usando cookies do Instagram');
+  }
+
+  args.push(url);
 
   // Se for audio, extrai apenas audio
   if (isAudio) {
@@ -152,12 +219,16 @@ router.get('/download/info', async (req, res) => {
     return res.status(400).json({ error: 'URL e obrigatorio' });
   }
 
-  const ytdlp = spawn('yt-dlp', [
+  const infoArgs = [
     '-J',
     '--no-warnings',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    url,
-  ]);
+  ];
+  const infoCookies = ensureCookiesFile();
+  if (infoCookies) infoArgs.push('--cookies', infoCookies);
+  infoArgs.push(url);
+
+  const ytdlp = spawn('yt-dlp', infoArgs);
 
   let stdout = '';
   let stderr = '';
