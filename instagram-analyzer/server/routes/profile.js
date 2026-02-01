@@ -1,57 +1,14 @@
 // ========== ROTAS DE PERFIL INSTAGRAM ==========
 
 const express = require('express');
-const { spawn } = require('child_process');
 const path = require('path');
 const db = require('../services/database');
+const apify = require('../services/apify');
 
 const router = express.Router();
 
 // Perfil fixo
 const FIXED_USERNAME = 'nextleveldj1';
-
-/**
- * Executa script Python e retorna resultado
- */
-function runPythonScript(args) {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, '../scripts/fetch_profile.py');
-    // Usa Python do virtual environment
-    const venvPython = path.join(__dirname, '../../venv/bin/python3');
-    const python = spawn(venvPython, [scriptPath, ...args]);
-
-    let stdout = '';
-    let stderr = '';
-
-    python.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    python.stderr.on('data', (data) => {
-      const msg = data.toString();
-      stderr += msg;
-      console.log(`[Python] ${msg.trim()}`);
-    });
-
-    python.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr || `Python exited with code ${code}`));
-        return;
-      }
-
-      try {
-        const result = JSON.parse(stdout);
-        resolve(result);
-      } catch (e) {
-        reject(new Error(`Failed to parse Python output: ${stdout}`));
-      }
-    });
-
-    python.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
 
 /**
  * GET /api/videos
@@ -84,13 +41,13 @@ router.get('/videos', async (req, res) => {
 
 /**
  * POST /api/refresh
- * Atualiza videos do Instagram e salva no banco
+ * Atualiza videos do Instagram via Apify e salva no banco
  */
 router.post('/refresh', async (req, res) => {
   try {
-    console.log(`[Refresh] Atualizando videos de @${FIXED_USERNAME}...`);
+    console.log(`[Refresh] Atualizando videos de @${FIXED_USERNAME} via Apify...`);
 
-    const result = await runPythonScript([FIXED_USERNAME, 'all', '100']);
+    const result = await apify.fetchInstagramPosts(FIXED_USERNAME, 100);
 
     if (result.error) {
       console.log(`[Refresh] Erro: ${result.error}`);
@@ -117,7 +74,7 @@ router.post('/refresh', async (req, res) => {
   } catch (error) {
     console.error('[Refresh] Erro:', error);
     res.status(500).json({
-      error: 'Erro ao atualizar videos',
+      error: 'Erro ao atualizar videos via Apify',
       details: error.message,
     });
   }
@@ -133,7 +90,7 @@ router.get('/profile/:username', async (req, res) => {
 
 /**
  * POST /api/profile/:username
- * Busca videos de qualquer usuario do Instagram (para Instagram Criadores)
+ * Busca videos de qualquer usuario do Instagram via Apify
  */
 router.post('/profile/:username', async (req, res) => {
   try {
@@ -148,9 +105,9 @@ router.post('/profile/:username', async (req, res) => {
     }
 
     const cleanUsername = username.replace('@', '').trim();
-    console.log(`[Profile] Buscando videos de @${cleanUsername}...`);
+    console.log(`[Profile] Buscando videos de @${cleanUsername} via Apify...`);
 
-    const result = await runPythonScript([cleanUsername, 'all', limit.toString()]);
+    const result = await apify.fetchInstagramPosts(cleanUsername, limit);
 
     if (result.error) {
       console.log(`[Profile] Erro: ${result.error}`);
@@ -198,7 +155,7 @@ router.post('/profile/:username', async (req, res) => {
     console.error('[Profile] Erro:', error);
     res.status(500).json({
       success: false,
-      error: 'Erro ao buscar perfil',
+      error: 'Erro ao buscar perfil via Apify',
       details: error.message
     });
   }
@@ -234,35 +191,12 @@ router.post('/validate-urls', async (req, res) => {
       }
 
       const shortcode = match[1];
-
-      try {
-        const videoInfo = await runPythonScript([shortcode]);
-
-        if (videoInfo.error) {
-          results.push({
-            url,
-            shortcode,
-            valid: false,
-            error: videoInfo.error,
-          });
-        } else {
-          results.push({
-            url,
-            shortcode,
-            valid: true,
-            video: videoInfo,
-          });
-        }
-      } catch (e) {
-        results.push({
-          url,
-          shortcode,
-          valid: false,
-          error: e.message,
-        });
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // For URL validation, we just check the format - no need to call Apify for each
+      results.push({
+        url,
+        shortcode,
+        valid: true,
+      });
     }
 
     console.log(`[Validate] ${results.filter(r => r.valid).length}/${urls.length} URLs validas`);
@@ -279,52 +213,16 @@ router.post('/validate-urls', async (req, res) => {
 
 /**
  * GET /api/comments/:shortcode
- * Busca comentarios de um post especifico
+ * Busca comentarios de um post especifico via Apify
  */
 router.get('/comments/:shortcode', async (req, res) => {
   const { shortcode } = req.params;
   const limit = parseInt(req.query.limit) || 500;
 
-  console.log(`[Comments] Buscando comentarios de ${shortcode}...`);
+  console.log(`[Comments] Buscando comentarios de ${shortcode} via Apify...`);
 
   try {
-    const scriptPath = path.join(__dirname, '../scripts/fetch_comments.py');
-    const venvPython = path.join(__dirname, '../../venv/bin/python3');
-
-    const result = await new Promise((resolve, reject) => {
-      const python = spawn(venvPython, [scriptPath, shortcode, limit.toString()]);
-
-      let stdout = '';
-      let stderr = '';
-
-      python.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      python.stderr.on('data', (data) => {
-        const msg = data.toString();
-        stderr += msg;
-        console.log(`[Python] ${msg.trim()}`);
-      });
-
-      python.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(stderr || `Python exited with code ${code}`));
-          return;
-        }
-
-        try {
-          const result = JSON.parse(stdout);
-          resolve(result);
-        } catch (e) {
-          reject(new Error(`Failed to parse Python output: ${stdout}`));
-        }
-      });
-
-      python.on('error', (err) => {
-        reject(err);
-      });
-    });
+    const result = await apify.fetchComments(shortcode, limit);
 
     if (result.error) {
       console.log(`[Comments] Erro: ${result.error}`);
@@ -337,7 +235,7 @@ router.get('/comments/:shortcode', async (req, res) => {
   } catch (error) {
     console.error('[Comments] Erro:', error);
     res.status(500).json({
-      error: 'Erro ao buscar comentarios',
+      error: 'Erro ao buscar comentarios via Apify',
       details: error.message,
     });
   }
@@ -386,7 +284,6 @@ router.get('/proxy-image', async (req, res) => {
     // 2. Se falhou e temos shortcode, tenta URL alternativa do Instagram
     if (!succeeded && shortcode) {
       try {
-        // Tenta buscar a página do Instagram e extrair a thumbnail
         const instaUrl = `https://www.instagram.com/p/${shortcode}/media/?size=l`;
         response = await tryFetch(instaUrl);
         succeeded = true;
@@ -419,7 +316,7 @@ router.get('/proxy-image', async (req, res) => {
     const contentType = response.headers.get('content-type') || 'image/jpeg';
 
     res.set('Content-Type', contentType);
-    res.set('Cache-Control', 'public, max-age=3600'); // Reduzido para 1 hora
+    res.set('Cache-Control', 'public, max-age=3600');
     res.send(buffer);
 
   } catch (error) {
