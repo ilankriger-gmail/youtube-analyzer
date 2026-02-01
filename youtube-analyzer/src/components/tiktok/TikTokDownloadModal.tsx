@@ -1,5 +1,6 @@
 // ========== COMPONENTE: MODAL DE DOWNLOAD TIKTOK ==========
 
+import { useState } from 'react';
 import { X, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useTikTok } from '../../contexts';
 import { formatViews } from '../../services/tiktok.service';
@@ -15,10 +16,36 @@ export function TikTokDownloadModal() {
     failedCount,
   } = useTikTok();
 
+  const [copiedAll, setCopiedAll] = useState(false);
+
   if (!isModalOpen) return null;
 
   const total = downloadQueue.length;
   const progress = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+  const videoLinks = downloadQueue.map(item => ({
+    title: item.video.title,
+    url: item.video.url,
+    id: item.video.id,
+  }));
+
+  const handleCopyAllLinks = async () => {
+    const linksText = videoLinks.map((l, i) => `${i + 1}. ${l.title}\n   ${l.url}`).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(linksText);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = linksText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
@@ -36,6 +63,53 @@ export function TikTokDownloadModal() {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Links dos videos */}
+        {videoLinks.length > 0 && (
+          <div className="p-4 border-b border-dark-700">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-white">
+                🔗 Links dos vídeos ({videoLinks.length})
+              </span>
+              <button
+                onClick={handleCopyAllLinks}
+                className="text-xs px-3 py-1.5 rounded-md bg-gradient-to-r from-[#25f4ee] to-[#fe2c55] text-white hover:opacity-80 transition-opacity"
+              >
+                {copiedAll ? '✅ Copiado!' : '📋 Copiar todos'}
+              </button>
+            </div>
+            <div className="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+              {videoLinks.map((link, i) => (
+                <div
+                  key={link.id}
+                  className="flex items-center gap-2 p-2 rounded bg-dark-700 hover:bg-dark-600 transition-colors group"
+                >
+                  <span className="text-xs text-dark-500 w-5 text-right shrink-0">
+                    {i + 1}.
+                  </span>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#25f4ee] hover:text-[#25f4ee]/80 truncate flex-1"
+                    title={link.title}
+                  >
+                    {link.title}
+                  </a>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-dark-500 hover:text-white shrink-0"
+                    title="Abrir no TikTok"
+                  >
+                    ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Barra de progresso geral */}
         <div className="p-4 border-b border-dark-700">

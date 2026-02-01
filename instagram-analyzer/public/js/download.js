@@ -35,6 +35,7 @@ const Download = {
 
     // Abre modal
     this.showModal();
+    this.showVideoLinks(videos);
     this.renderQueue();
 
     // Processa fila
@@ -85,6 +86,7 @@ const Download = {
 
     // Abre modal
     this.showModal();
+    this.showVideoLinks(videos);
     this.renderQueue();
 
     // Processa fila - apenas comentarios
@@ -390,6 +392,55 @@ const Download = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     console.log(`CSV de comentarios gerado com ${this.allComments.length} comentarios`);
+  },
+
+  /**
+   * Mostra lista de links dos videos no modal
+   */
+  showVideoLinks(videos) {
+    const section = document.getElementById('video-links-section');
+    const list = document.getElementById('video-links-list');
+    const copyBtn = document.getElementById('btn-copy-all-links');
+
+    if (!section || !list || videos.length === 0) return;
+
+    section.style.display = 'block';
+
+    list.innerHTML = videos.map((video, i) => {
+      const url = video.url || `https://www.instagram.com/p/${video.shortcode}/`;
+      const title = (video.caption || 'Sem titulo').substring(0, 80);
+      return `
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+          <span style="font-size: 11px; color: #888; width: 20px; text-align: right; flex-shrink: 0;">${i + 1}.</span>
+          <a href="${url}" target="_blank" rel="noopener" style="font-size: 11px; color: #e1306c; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;" title="${title}">${title}</a>
+          <a href="${url}" target="_blank" rel="noopener" style="font-size: 11px; color: #888; text-decoration: none; flex-shrink: 0;" title="Abrir no Instagram">↗</a>
+        </div>
+      `;
+    }).join('');
+
+    // Copy all handler
+    copyBtn.onclick = async () => {
+      const linksText = videos.map((video, i) => {
+        const url = video.url || `https://www.instagram.com/p/${video.shortcode}/`;
+        const title = (video.caption || 'Sem titulo').substring(0, 80);
+        return `${i + 1}. ${title}\n   ${url}`;
+      }).join('\n\n');
+
+      try {
+        await navigator.clipboard.writeText(linksText);
+        copyBtn.textContent = '✅ Copiado!';
+        setTimeout(() => { copyBtn.textContent = '📋 Copiar todos'; }, 2000);
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = linksText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        copyBtn.textContent = '✅ Copiado!';
+        setTimeout(() => { copyBtn.textContent = '📋 Copiar todos'; }, 2000);
+      }
+    };
   },
 
   /**

@@ -137,6 +137,14 @@
           <button class="modal-close" id="modal-close">&times;</button>
         </div>
         <div class="modal-body">
+          <!-- Links dos videos -->
+          <div id="video-links-section" style="margin-bottom: 16px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+              <span style="font-size: 14px; font-weight: 600; color: #fff;">🔗 Links dos vídeos</span>
+              <button id="btn-copy-all-links" style="font-size: 11px; padding: 4px 12px; border-radius: 6px; background: #e1306c; color: white; border: none; cursor: pointer;">📋 Copiar todos</button>
+            </div>
+            <div id="video-links-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;"></div>
+          </div>
           <div class="progress-overall">
             <div class="progress-bar">
               <div class="progress-fill" id="progress-fill"></div>
