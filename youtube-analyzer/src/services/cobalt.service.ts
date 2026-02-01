@@ -305,52 +305,29 @@ export function getServerDownloadUrl(
 }
 
 /**
- * Triggers a file download via hidden iframe.
- * This avoids blob memory issues and works reliably for multiple sequential downloads
- * because the browser handles each as a native file download (Content-Disposition: attachment).
+ * Triggers a file download via hidden link click.
+ * The server responds with Content-Disposition: attachment, so the browser
+ * handles it as a native download without navigating away.
+ * Resolves after a short delay to allow the browser to start the download.
  */
 export function triggerServerDownload(
   videoId: string,
   filename: string,
   quality: string = '720'
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const url = getServerDownloadUrl(videoId, filename, quality);
 
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = url;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    // Cleanup after a generous timeout (server-side download + stream can take a while)
-    const cleanupTimeout = setTimeout(() => {
-      if (iframe.parentNode) {
-        document.body.removeChild(iframe);
-      }
-      resolve(); // Resolve even on timeout — download may still be happening in browser
-    }, 5 * 60 * 1000); // 5 minutes max
-
-    iframe.onload = () => {
-      // iframe onload fires when the response is received.
-      // For attachment downloads, the iframe stays mostly empty.
-      // We give a small delay then resolve.
-      setTimeout(() => {
-        clearTimeout(cleanupTimeout);
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-        resolve();
-      }, 2000);
-    };
-
-    iframe.onerror = () => {
-      clearTimeout(cleanupTimeout);
-      if (iframe.parentNode) {
-        document.body.removeChild(iframe);
-      }
-      reject(new Error(`Failed to start download for ${videoId}`));
-    };
-
-    document.body.appendChild(iframe);
+    // Give the browser a moment to initiate the download
+    setTimeout(resolve, 1500);
   });
 }
 
