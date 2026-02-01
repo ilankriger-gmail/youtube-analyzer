@@ -185,25 +185,17 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
     const controller = new AbortController();
     setAbortController(controller);
 
-    console.log(`[Download] Iniciando ${videos.length} video(s) — Cobalt primeiro, yt-dlp como fallback`);
+    console.log(`[Download] Iniciando ${videos.length} video(s) — yt-dlp server (Railway)`);
 
-    // Processa downloads sequencialmente
+    // Processa downloads sequencialmente via yt-dlp server (mais confiável)
     for (let i = 0; i < newItems.length; i++) {
       if (controller.signal.aborted) break;
 
-      // Try Cobalt first (uses Vercel proxy, no CORS issues)
-      let success = await processDownloadCobalt(newItems[i]);
+      await processDownloadServer(newItems[i]);
 
-      // Fallback to server-side yt-dlp if Cobalt failed
-      if (!success) {
-        console.log(`[Download] Cobalt falhou, tentando yt-dlp para ${newItems[i].video.title}...`);
-        success = await processDownloadServer(newItems[i]);
-      }
-
-      // Delay de 3s entre downloads
+      // Delay de 2s entre downloads
       if (i < newItems.length - 1) {
-        console.log(`[Download] Aguardando 3s antes do proximo...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
@@ -264,11 +256,7 @@ export function DownloadProvider({ children }: DownloadProviderProps) {
       if (controller.signal.aborted) break;
 
       const item = { ...failedItems[i], status: 'pending' as DownloadStatus, error: undefined };
-
-      let success = await processDownloadCobalt(item);
-      if (!success) {
-        success = await processDownloadServer(item);
-      }
+      await processDownloadServer(item);
 
       if (i < failedItems.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 3000));
