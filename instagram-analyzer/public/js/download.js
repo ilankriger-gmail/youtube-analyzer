@@ -45,9 +45,9 @@ const Download = {
       this.currentIndex = i;
       await this.processItem(i, quality);
 
-      // Delay entre downloads
+      // Delay entre downloads (3s pra dar tempo do browser processar)
       if (i < this.queue.length - 1 && !this.aborted) {
-        await this.delay(1500);
+        await this.delay(3000);
       }
     }
 
@@ -137,32 +137,72 @@ const Download = {
   },
 
   /**
-   * Processa um item da fila
+   * Processa um item da fila - baixa via fetch + blob pra garantir completude
    */
   async processItem(index, quality) {
     const item = this.queue[index];
     item.status = 'downloading';
     this.renderQueue();
 
-    try {
-      // Sempre usa yt-dlp com a URL do post (URLs CDN do Instagram expiram rapido)
-      const postUrl = item.video.url || `https://www.instagram.com/p/${item.video.shortcode}/`;
-      const downloadUrl = getDownloadUrl(postUrl, quality, item.filename);
+    const MAX_RETRIES = 2;
 
-      // Cria link de download
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = item.filename;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Sempre usa yt-dlp com a URL do post (URLs CDN do Instagram expiram rapido)
+        const postUrl = item.video.url || `https://www.instagram.com/p/${item.video.shortcode}/`;
+        const downloadUrl = getDownloadUrl(postUrl, quality, item.filename);
 
-      item.status = 'completed';
-    } catch (error) {
-      item.status = 'failed';
-      item.error = error.message;
-      console.error(`Erro ao baixar ${item.video.caption}:`, error);
+        console.log(`[Download ${index + 1}/${this.queue.length}] Baixando: ${item.filename} (tentativa ${attempt + 1})`);
+
+        // Usa fetch + blob pra garantir que o download completa antes de ir pro proximo
+        const response = await fetch(downloadUrl);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+          throw new Error(errorData.details || errorData.error || `HTTP ${response.status}`);
+        }
+
+        // Verifica content-type (rejeita respostas de erro em JSON/HTML)
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json') || contentType.includes('text/html')) {
+          const errorData = await response.json().catch(() => ({ error: 'Resposta inesperada' }));
+          throw new Error(errorData.details || errorData.error || 'Servidor retornou erro');
+        }
+
+        const blob = await response.blob();
+
+        // Verifica tamanho minimo (< 10KB provavelmente e erro)
+        if (blob.size < 10000) {
+          throw new Error(`Arquivo muito pequeno (${Math.round(blob.size / 1024)}KB)`);
+        }
+
+        // Dispara download do blob
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = item.filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+        item.status = 'completed';
+        console.log(`[Download ${index + 1}] Concluido: ${item.filename} (${Math.round(blob.size / 1024 / 1024)}MB)`);
+        break; // Sucesso, sai do loop de retry
+
+      } catch (error) {
+        console.error(`[Download ${index + 1}] Erro (tentativa ${attempt + 1}):`, error.message);
+
+        if (attempt < MAX_RETRIES) {
+          console.log(`[Download ${index + 1}] Tentando novamente em 3s...`);
+          await this.delay(3000);
+          continue;
+        }
+
+        item.status = 'failed';
+        item.error = error.message;
+      }
     }
 
     // Buscar comentarios se habilitado
