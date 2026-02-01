@@ -3,7 +3,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const COBALT_INSTANCES = [
   'https://cobalt-api.kwiatekmiki.com',
   'https://cobalt-7.kwiatekmiki.com',
-  'https://downloadapi.stuff.solutions',
 ];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -28,38 +27,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let lastError: string = '';
 
   for (const instance of COBALT_INSTANCES) {
-    try {
-      const response = await fetch(`${instance}/`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'youtube-analyzer/1.0 (+https://github.com/ilankriger-gmail/youtube-analyzer)',
-        },
-        body: JSON.stringify({
-          url: body.url,
-          downloadMode: body.downloadMode || 'auto',
-          videoQuality: body.videoQuality || '1080',
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
+    // Try up to 2 times per instance (Cloudflare can be flaky)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch(`${instance}/`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          },
+          body: JSON.stringify({
+            url: body.url,
+            downloadMode: body.downloadMode || 'auto',
+            videoQuality: body.videoQuality || '1080',
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
 
-      if (!response.ok) {
-        lastError = `${instance}: HTTP ${response.status}`;
-        continue;
+        // Cloudflare block returns HTML
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+          lastError = `${instance}: Cloudflare block (attempt ${attempt + 1})`;
+          if (attempt === 0) {
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+          }
+          break;
+        }
+
+        if (!response.ok) {
+          lastError = `${instance}: HTTP ${response.status}`;
+          break;
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'error') {
+          lastError = `${instance}: ${data.error?.code || 'error'}`;
+          break;
+        }
+
+        return res.status(200).json(data);
+      } catch (err) {
+        lastError = `${instance}: ${err instanceof Error ? err.message : 'unknown'}`;
+        break;
       }
-
-      const data = await response.json();
-
-      if (data.status === 'error') {
-        lastError = `${instance}: ${data.error?.code || 'error'}`;
-        continue;
-      }
-
-      return res.status(200).json(data);
-    } catch (err) {
-      lastError = `${instance}: ${err instanceof Error ? err.message : 'unknown'}`;
-      continue;
     }
   }
 
